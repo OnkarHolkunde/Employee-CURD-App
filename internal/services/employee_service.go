@@ -84,7 +84,7 @@ func (s *EmployeeService) List(ctx context.Context) ([]models.Employee, string, 
 	}
 
 	var employees []models.Employee
-	if err := s.db.WithContext(ctx).Order("id asc").Find(&employees).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("is_deleted = ?", false).Order("id asc").Find(&employees).Error; err != nil {
 		slog.Error("list employees: mysql query failed", "error", err)
 		return nil, "", apperrors.NewInternal()
 	}
@@ -111,7 +111,7 @@ func (s *EmployeeService) GetByID(ctx context.Context, id uint) (*models.Employe
 	}
 
 	var emp models.Employee
-	if err := s.db.WithContext(ctx).First(&emp, id).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("is_deleted = ?", false).First(&emp, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, "", apperrors.NewNotFound("employee")
 		}
@@ -148,7 +148,7 @@ func (s *EmployeeService) Create(ctx context.Context, emp *models.Employee) *app
 // record, so a field omitted from the request is written as its zero value.
 func (s *EmployeeService) Replace(ctx context.Context, id uint, replacement *models.Employee) (*models.Employee, *apperrors.AppError) {
 	var existing models.Employee
-	if err := s.db.WithContext(ctx).First(&existing, id).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("is_deleted = ?", false).First(&existing, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, apperrors.NewNotFound("employee")
 		}
@@ -180,7 +180,7 @@ func (s *EmployeeService) Replace(ctx context.Context, id uint, replacement *mod
 // in input are changed; everything else is left untouched.
 func (s *EmployeeService) Patch(ctx context.Context, id uint, input models.EmployeeUpdateInput) (*models.Employee, *apperrors.AppError) {
 	var emp models.Employee
-	if err := s.db.WithContext(ctx).First(&emp, id).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("is_deleted = ?", false).First(&emp, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, apperrors.NewNotFound("employee")
 		}
@@ -208,7 +208,8 @@ func (s *EmployeeService) Patch(ctx context.Context, id uint, input models.Emplo
 	return &emp, nil
 }
 
-// Delete removes an employee from MySQL and clears its cache entries.
+// Delete soft-deletes an employee: the row stays in MySQL with
+// is_deleted set to true
 func (s *EmployeeService) Delete(ctx context.Context, id uint) *apperrors.AppError {
 	result := s.db.WithContext(ctx).Model(&models.Employee{}).
 		Where("id = ? AND is_deleted = ?", id, false).
@@ -241,7 +242,8 @@ func (s *EmployeeService) refreshCaches(ctx context.Context, emp models.Employee
 	_ = s.InvalidateListCache(ctx)
 }
 
-// emailInUse reports whether `email` already belongs to a different employee record 
+// emailInUse reports whether `email` already belongs to a different
+// employee record 
 func (s *EmployeeService) emailInUse(ctx context.Context, email string, excludeID uint) (bool, *apperrors.AppError) {
 	email = strings.TrimSpace(email)
 	if email == "" {
@@ -249,7 +251,8 @@ func (s *EmployeeService) emailInUse(ctx context.Context, email string, excludeI
 	}
 
 	query := s.db.WithContext(ctx).Model(&models.Employee{}).
-		Where("LOWER(email) = LOWER(?)", email)
+		Where("LOWER(email) = LOWER(?)", email).
+		Where("is_deleted = ?", false)
 	if excludeID != 0 {
 		query = query.Where("id <> ?", excludeID)
 	}

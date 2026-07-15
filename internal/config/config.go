@@ -59,7 +59,7 @@ func Load() *Config {
 		MySQLHost:     getEnv("MYSQL_HOST", "127.0.0.1"),
 		MySQLPort:     getEnv("MYSQL_PORT", "3306"),
 		MySQLUser:     getEnv("MYSQL_USER", "root"),
-		MySQLPassword: getEnv("MYSQL_PASSWORD", "rootpassword"), //Enter your root password
+		MySQLPassword: getEnv("MYSQL_PASSWORD", "MyNewPassword@123"), //Enter your root password
 		MySQLDBName:   getEnv("MYSQL_DB", "excel_crud_db"),
 
 		RedisAddr:     getEnv("REDIS_ADDR", "127.0.0.1:6379"),
