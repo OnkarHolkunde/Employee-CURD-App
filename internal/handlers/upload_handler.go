@@ -47,7 +47,6 @@ func NewUploadHandler(employeeSvc *services.EmployeeService, jobStore *services.
 // UploadExcel handles POST /api/v1/upload: validates and stores the file,
 // kicks off async parsing in a goroutine, and returns a job ID to poll.
 func (h *UploadHandler) UploadExcel(c *gin.Context) {
-	log.Println("upload handler")
 	fileHeader, err := c.FormFile("file")
 
 	fmt.Println("fileHeader", fileHeader)
