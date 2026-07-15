@@ -22,6 +22,8 @@ import (
 )
 
 func main() {
+
+	// Logger instance created
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
@@ -36,7 +38,7 @@ func main() {
 	if err := database.RunMigrations(); err != nil {
 	slog.Error("Migration failed", "error", err)
 	os.Exit(1)
-}
+	}
 
 	if err := database.ConnectRedis(cfg); err != nil {
 		slog.Error("Redis connection failed", "error", err)

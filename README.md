@@ -47,7 +47,7 @@ on every write.
 │   ├── middleware/          # request ID, structured logging, recovery, CORS
 │   ├── response/            # standard JSON response envelope
 │   └── routes/               # route registration + health/readiness checks
-├── sample_data/             # the sample Excel file used for testing
+├── sample_data/             # sample Excel file for the upload demo
 ├── uploads/                  # scratch space for in-flight uploads (gitignored)
 ├── Dockerfile
 ├── docker-compose.yml        # app + MySQL + Redis, one command to run everything
@@ -179,13 +179,3 @@ curl http://localhost:8080/api/v1/upload/status/b1f2...
   from generating one giant SQL statement or opening thousands of
   round trips.
 
-## Testing
-
-```bash
-make test
-```
-
-Includes unit tests for Excel header validation (case-insensitivity,
-column reordering, missing/short header detection). Extending this with
-handler-level tests (using `httptest` + a test MySQL/Redis, e.g. via
-`testcontainers-go`) is the natural next step for a fuller test suite.
