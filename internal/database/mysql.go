@@ -19,9 +19,7 @@ import (
 // DB is the shared GORM handle every service uses to talk to MySQL.
 var DB *gorm.DB
 
-// ConnectMySQL connects in two steps so a fresh environment without the
-// target database yet still works: first against the bare server to run
-// CREATE DATABASE IF NOT EXISTS, then a real connection to it.
+// ConnectMySQL creates a MySQL DB connection and verifies connectivity.
 func ConnectMySQL(cfg *config.Config) error {
 
 	// Connect WITHOUT database

@@ -12,9 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// EmployeeHandler adapts HTTP requests to services.EmployeeService calls.
-// It owns request parsing/validation/response-shaping only; all business
-// logic (caching, uniqueness checks, persistence) lives in the service.
+
 type EmployeeHandler struct {
 	svc *services.EmployeeService
 }
@@ -24,10 +22,7 @@ func NewEmployeeHandler(svc *services.EmployeeService) *EmployeeHandler {
 }
 
 // ListEmployees handles GET /api/v1/employees?page=1&page_size=50.
-// Reads from Redis first; on a cache miss it falls back to MySQL and
-// repopulates the cache, per the assignment's caching requirement.
-// Pagination is applied in-memory on top of the cached/DB result so the
-// cache still represents "the full imported dataset" as a single entity.
+// Reads from Redis first; on a cache miss it falls back to MySQL 
 func (h *EmployeeHandler) ListEmployees(c *gin.Context) {
 	employees, source, appErr := h.svc.List(c.Request.Context())
 	if appErr != nil {
@@ -78,11 +73,7 @@ func (h *EmployeeHandler) GetEmployee(c *gin.Context) {
 	response.OKWithMeta(c, "employee retrieved", emp, gin.H{"source": source})
 }
 
-// CreateEmployee handles POST /api/v1/employees for manually adding a
-// single record (independent of the bulk Excel import flow). The payload
-// is validated field-by-field via internal/validation before it ever
-// reaches the service layer, and a duplicate email is rejected with a
-// 409 Conflict rather than a generic error.
+// CreateEmployee handles POST /api/v1/employees for manually adding a single record
 func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 	var emp models.Employee
 	if appErr := apperrors.BindEmployeeJSON(c, &emp); appErr != nil {
@@ -104,12 +95,7 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 }
 
 // ReplaceEmployee handles PUT /api/v1/employees/:id.
-//
-// PUT is a full replacement: the request body must represent the complete
-// desired state of the resource (same validation rules as Create), and
-// any field the client omits is written as its zero value — exactly as
-// PUT semantics require. Use PatchEmployee instead to change only a
-// subset of fields.
+// PUT is a full replacement: the request body must represent the complete desired state of the resource 
 func (h *EmployeeHandler) ReplaceEmployee(c *gin.Context) {
 	id, appErr := parseIDParam(c)
 	if appErr != nil {
@@ -138,11 +124,7 @@ func (h *EmployeeHandler) ReplaceEmployee(c *gin.Context) {
 }
 
 // PatchEmployee handles PATCH /api/v1/employees/:id.
-//
-// PATCH is a partial update: only fields present in the request body are
-// validated and changed. Every field omitted from the body is left
-// exactly as it was — this is what makes PATCH an independent method from
-// ReplaceEmployee/PUT rather than an alias for it.
+// PATCH is a partial update: only fields present in the request body are validated and changed. 
 func (h *EmployeeHandler) PatchEmployee(c *gin.Context) {
 	id, appErr := parseIDParam(c)
 	if appErr != nil {
@@ -187,8 +169,7 @@ func (h *EmployeeHandler) DeleteEmployee(c *gin.Context) {
 }
 
 // parseIDParam extracts and validates the :id path param shared by every
-// single-employee route (GET/PUT/PATCH/DELETE), so each handler doesn't
-// repeat the same parse-or-400 boilerplate.
+// single-employee route (GET/PUT/PATCH/DELETE)
 func parseIDParam(c *gin.Context) (uint, *apperrors.AppError) {
 	idStr := c.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 64)
@@ -198,10 +179,7 @@ func parseIDParam(c *gin.Context) (uint, *apperrors.AppError) {
 	return uint(id), nil
 }
 
-// parsePositiveIntQuery reads an integer query param (page, page_size),
-// falling back to fallback when the param is absent or not a valid
-// integer, rather than rejecting the request outright — pagination
-// params are a convenience, not something worth a 400 over.
+// parsePositiveIntQuery reads an integer query param 
 func parsePositiveIntQuery(c *gin.Context, key string, fallback int) int {
 	raw := c.Query(key)
 	if raw == "" {

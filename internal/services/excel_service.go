@@ -9,10 +9,8 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-// ExpectedHeaders defines the required column headers (in order) for a
-// valid import file, per the assignment's "validate uploaded Excel file
-// format" requirement. Matching is case-insensitive and tolerant of
-// surrounding whitespace.
+// ExpectedHeaders are the column headers we expect to find in the first row
+// of the Excel file.
 var ExpectedHeaders = []string{
 	"first_name",
 	"last_name",

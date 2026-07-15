@@ -232,9 +232,6 @@ func (s *EmployeeService) InvalidateListCache(ctx context.Context) error {
 }
 
 // refreshCaches writes the just-updated record back into the per-record
-// cache and clears the list cache, so an immediate follow-up read doesn't
-// need to round-trip to MySQL, matching the assignment's requirement to
-// "update the record in both the MySQL database and Redis cache".
 func (s *EmployeeService) refreshCaches(ctx context.Context, emp models.Employee) {
 	if payload, jsonErr := json.Marshal(emp); jsonErr == nil {
 		_ = database.RDB.Set(ctx, employeeCacheKey(emp.ID), payload, s.cacheTTL).Err()
@@ -242,11 +239,7 @@ func (s *EmployeeService) refreshCaches(ctx context.Context, emp models.Employee
 	_ = s.InvalidateListCache(ctx)
 }
 
-// emailInUse reports whether `email` already belongs to a different
-// employee record (excludeID is the record being updated, if any — pass 0
-// for a brand-new Create). The comparison is case-insensitive since email
-// addresses are conventionally treated that way. A blank email never
-// counts as a duplicate.
+// emailInUse reports whether `email` already belongs to a different employee record 
 func (s *EmployeeService) emailInUse(ctx context.Context, email string, excludeID uint) (bool, *apperrors.AppError) {
 	email = strings.TrimSpace(email)
 	if email == "" {

@@ -27,9 +27,11 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
+	// Load configuration
 	cfg := config.Load()
 	gin.SetMode(cfg.GinMode)
 
+	// MySQL and Redis connections
 	if err := database.ConnectMySQL(cfg); err != nil {
 		slog.Error("MySQL connection failed", "error", err)
 		os.Exit(1)
@@ -45,6 +47,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Services
 	employeeSvc := services.NewEmployeeService(cfg.CacheTTLSeconds)
 	jobStore := services.NewJobStore()
 

@@ -11,8 +11,6 @@ import (
 )
 
 // RunMigrations applies every .sql file under ./migrations in filename
-// sort order. There's no migrations-ran tracking table, so each file must
-// guard itself (e.g. CREATE TABLE IF NOT EXISTS) to stay safe on rerun.
 func RunMigrations() error {
 	const migrationsDir = "./migrations"
 
@@ -40,6 +38,7 @@ func RunMigrations() error {
 
 	sort.Strings(migrationFiles)
 
+	// Run migrations
 	for _, file := range migrationFiles {
 		slog.Info("running migration", "file", file)
 
