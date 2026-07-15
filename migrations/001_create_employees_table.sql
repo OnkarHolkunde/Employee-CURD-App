@@ -12,10 +12,13 @@ CREATE TABLE IF NOT EXISTS employees (
     email VARCHAR(150),
     web VARCHAR(255),
 
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
         ON UPDATE CURRENT_TIMESTAMP,
 
     PRIMARY KEY (id),
-    INDEX idx_employees_email (email)
+    INDEX idx_employees_email (email),
+    INDEX idx_employees_is_deleted (is_deleted)
 );

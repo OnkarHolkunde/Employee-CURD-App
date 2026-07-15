@@ -210,9 +210,11 @@ func (s *EmployeeService) Patch(ctx context.Context, id uint, input models.Emplo
 
 // Delete removes an employee from MySQL and clears its cache entries.
 func (s *EmployeeService) Delete(ctx context.Context, id uint) *apperrors.AppError {
-	result := s.db.WithContext(ctx).Delete(&models.Employee{}, id)
+	result := s.db.WithContext(ctx).Model(&models.Employee{}).
+		Where("id = ? AND is_deleted = ?", id, false).
+		Update("is_deleted", true)
 	if result.Error != nil {
-		slog.Error("delete employee: mysql delete failed", "id", id, "error", result.Error)
+		slog.Error("delete employee: mysql soft-delete failed", "id", id, "error", result.Error)
 		return apperrors.NewInternal()
 	}
 	if result.RowsAffected == 0 {
