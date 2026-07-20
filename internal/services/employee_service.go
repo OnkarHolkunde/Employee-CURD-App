@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -16,13 +17,27 @@ import (
 )
 
 const (
-	listCacheKey      = "employees:list"
 	employeeKeyPrefix = "employee:"
+	listVersionKey    = "employees:list:version"
 	batchInsertSize   = 500
 )
 
+// employeeListPage is what gets cached in Redis for a given (version, start,
+// limit) triple: the page of employees plus the total row count.
+type employeeListPage struct {
+	Employees []models.Employee `json:"employees"`
+	Total     int64             `json:"total"`
+}
+
+// listCacheKey scopes a cached page to the current list version so a single
+// InvalidateListCache call invalidates every cached page at once: bumping
+// the version makes all previously cached keys unreachable (they just expire
+// off later via cacheTTL).
+func listCacheKey(version int64, start, limit int) string {
+	return fmt.Sprintf("employees:list:v%d:s%d:l%d", version, start, limit)
+}
+
 // EmployeeService centralizes all MySQL + Redis logic for employees.
-// Every exported method returns *apperrors.AppError, never a raw driver error.
 type EmployeeService struct {
 	db       *gorm.DB
 	cacheTTL time.Duration
@@ -65,36 +80,64 @@ func (s *EmployeeService) BulkInsert(ctx context.Context, employees []models.Emp
 	}
 
 	// Best-effort cache invalidation; a stale cache will simply expire
-	// within 5 minutes even if this fails, so we don't treat it as fatal.
+	// within cacheTTL even if this fails, so we don't treat it as fatal.
 	_ = s.InvalidateListCache(ctx)
 
 	return len(employees), nil
 }
 
-// List returns all employees, preferring the Redis cache and falling back
-// to (and repopulating from) MySQL on a cache miss.
-func (s *EmployeeService) List(ctx context.Context) ([]models.Employee, string, *apperrors.AppError) {
-	cached, err := database.RDB.Get(ctx, listCacheKey).Result()
+// List returns a page of employees ordered by id, along with the total
+// count of (non-deleted) employees in the database.
+// It checks the Redis cache first and falls back to (and repopulates from)
+// MySQL on a cache miss.
+func (s *EmployeeService) List(ctx context.Context, start, limit int) ([]models.Employee, int64, string, *apperrors.AppError) {
+	cacheKey := listCacheKey(s.currentListVersion(ctx), start, limit)
+
+	cached, err := database.RDB.Get(ctx, cacheKey).Result()
 	if err == nil {
-		var employees []models.Employee
-		if jsonErr := json.Unmarshal([]byte(cached), &employees); jsonErr == nil {
-			return employees, "redis", nil
+		var page employeeListPage
+		if jsonErr := json.Unmarshal([]byte(cached), &page); jsonErr == nil {
+			return page.Employees, page.Total, "redis", nil
 		}
 		// Corrupt cache entry: fall through and rebuild from MySQL.
 	}
 
+	var total int64
+	if err := s.db.WithContext(ctx).Model(&models.Employee{}).Where("is_deleted = ?", false).Count(&total).Error; err != nil {
+		slog.Error("list employees: mysql count failed", "error", err)
+		return nil, 0, "", apperrors.NewInternal()
+	}
+
 	var employees []models.Employee
-	if err := s.db.WithContext(ctx).Where("is_deleted = ?", false).Order("id asc").Find(&employees).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("is_deleted = ?", false).Order("id asc").
+		Offset(start).Limit(limit).Find(&employees).Error; err != nil {
 		slog.Error("list employees: mysql query failed", "error", err)
-		return nil, "", apperrors.NewInternal()
+		return nil, 0, "", apperrors.NewInternal()
 	}
 
-	if payload, jsonErr := json.Marshal(employees); jsonErr == nil {
+	if payload, jsonErr := json.Marshal(employeeListPage{Employees: employees, Total: total}); jsonErr == nil {
 		// Best-effort re-cache; a Redis hiccup shouldn't fail the read.
-		_ = database.RDB.Set(ctx, listCacheKey, payload, s.cacheTTL).Err()
+		_ = database.RDB.Set(ctx, cacheKey, payload, s.cacheTTL).Err()
 	}
 
-	return employees, "mysql", nil
+	return employees, total, "mysql", nil
+}
+
+// currentListVersion reads the list cache version, defaulting to 0 if it
+// has never been set (e.g. right after startup).
+func (s *EmployeeService) currentListVersion(ctx context.Context) int64 {
+	v, err := database.RDB.Get(ctx, listVersionKey).Int64()
+	if err != nil {
+		return 0
+	}
+	return v
+}
+
+// InvalidateListCache bumps the list cache version, which orphans every
+// previously cached page (they become unreachable and simply expire off
+// later via cacheTTL) without needing to scan/delete individual keys.
+func (s *EmployeeService) InvalidateListCache(ctx context.Context) error {
+	return database.RDB.Incr(ctx, listVersionKey).Err()
 }
 
 // GetByID fetches a single employee, checking the per-record Redis cache
@@ -228,13 +271,8 @@ func (s *EmployeeService) Delete(ctx context.Context, id uint) *apperrors.AppErr
 	return nil
 }
 
-// InvalidateListCache removes the cached "all employees" list so the next
-// List() call rebuilds it from MySQL.
-func (s *EmployeeService) InvalidateListCache(ctx context.Context) error {
-	return database.RDB.Del(ctx, listCacheKey).Err()
-}
-
 // refreshCaches writes the just-updated record back into the per-record
+// cache and invalidates the list cache.
 func (s *EmployeeService) refreshCaches(ctx context.Context, emp models.Employee) {
 	if payload, jsonErr := json.Marshal(emp); jsonErr == nil {
 		_ = database.RDB.Set(ctx, employeeCacheKey(emp.ID), payload, s.cacheTTL).Err()
@@ -243,7 +281,7 @@ func (s *EmployeeService) refreshCaches(ctx context.Context, emp models.Employee
 }
 
 // emailInUse reports whether `email` already belongs to a different
-// employee record 
+// employee record
 func (s *EmployeeService) emailInUse(ctx context.Context, email string, excludeID uint) (bool, *apperrors.AppError) {
 	email = strings.TrimSpace(email)
 	if email == "" {
@@ -266,7 +304,7 @@ func (s *EmployeeService) emailInUse(ctx context.Context, email string, excludeI
 	return count > 0, nil
 }
 
-// applyPatch copies every non-nil field from input onto emp in place. 
+// applyPatch copies every non-nil field from input onto emp in place.
 func applyPatch(emp *models.Employee, input models.EmployeeUpdateInput) {
 	if input.FirstName != nil {
 		emp.FirstName = *input.FirstName

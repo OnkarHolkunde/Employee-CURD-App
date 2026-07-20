@@ -28,7 +28,7 @@ type Config struct {
 	// UploadDir is where uploaded excel files are temporarily stored.
 	UploadDir string
 
-	// GinMode is "debug", "release", or "test". Defaults to "release" so
+	// GinMode is "debug", "release", or "test". Defaults to "release" 
 	GinMode string
 
 	// AllowedOrigin configures CORS; "*" allows any origin (fine for local

@@ -19,8 +19,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const maxUploadSize = 25 << 20 // 25 MB
-
 
 // These are what a client polling /upload/status sees; the raw error is
 // logged server-side via slog instead.
@@ -49,7 +47,7 @@ func NewUploadHandler(employeeSvc *services.EmployeeService, jobStore *services.
 func (h *UploadHandler) UploadExcel(c *gin.Context) {
 	fileHeader, err := c.FormFile("file")
 
-	fmt.Println("fileHeader", fileHeader)
+	// fmt.Println("fileHeader", fileHeader)
 	if err != nil {
 		response.Error(c, apperrors.NewBadRequest("no file provided; upload the excel file using multipart form field 'file'"))
 		return
@@ -60,10 +58,6 @@ func (h *UploadHandler) UploadExcel(c *gin.Context) {
 		response.Error(c, apperrors.NewInvalidFile("only .xlsx or .xls files are accepted"))
 		return
 	}
-	// if fileHeader.Size > maxUploadSize {
-	// 	response.Error(c, apperrors.NewFileTooLarge("file too large; the maximum upload size is 25MB"))
-	// 	return
-	// }
 
 	if err := os.MkdirAll(h.uploadDir, 0o755); err != nil {
 		slog.Error("upload: failed to prepare upload directory", "error", err)

@@ -12,7 +12,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-
 type EmployeeHandler struct {
 	svc *services.EmployeeService
 }
@@ -21,38 +20,24 @@ func NewEmployeeHandler(svc *services.EmployeeService) *EmployeeHandler {
 	return &EmployeeHandler{svc: svc}
 }
 
-// ListEmployees handles GET /api/v1/employees?page=1&page_size=50.
-// Reads from Redis first; on a cache miss it falls back to MySQL 
+// ListEmployees handles GET /api/v1/employees
+// Reads from Redis first; on a cache miss it falls back to (and repopulates
+// from) MySQL, which is queried using LIMIT/OFFSET for the given page.
 func (h *EmployeeHandler) ListEmployees(c *gin.Context) {
-	employees, source, appErr := h.svc.List(c.Request.Context())
+	start := parseNonNegativeIntQuery(c, "start", 0)
+	limit := min(parsePositiveIntQuery(c, "limit", 50), 500) // guard against accidentally huge responses
+
+	employees, total, source, appErr := h.svc.List(c.Request.Context(), start, limit)
 	if appErr != nil {
 		response.Error(c, appErr)
 		return
 	}
 
-	page := parsePositiveIntQuery(c, "page", 1)
-	pageSize := parsePositiveIntQuery(c, "page_size", 50)
-	if pageSize > 500 {
-		pageSize = 500 // guard against accidentally huge responses
-	}
-
-	total := len(employees)
-	start := (page - 1) * pageSize
-	end := start + pageSize
-	if start > total {
-		start = total
-	}
-	if end > total {
-		end = total
-	}
-	paged := employees[start:end]
-
-	response.OKWithMeta(c, "employees retrieved", paged, gin.H{
-		"source":      source, // "redis" or "mysql", handy for debugging/demo
-		"total":       total,
-		"page":        page,
-		"page_size":   pageSize,
-		"total_pages": (total + pageSize - 1) / pageSize,
+	response.OKWithMeta(c, "employees retrieved", employees, gin.H{
+		"source": source, // "redis" or "mysql", handy for debugging/demo
+		"total":  total,
+		"start":  start,
+		"limit":  limit,
 	})
 }
 
@@ -95,7 +80,7 @@ func (h *EmployeeHandler) CreateEmployee(c *gin.Context) {
 }
 
 // ReplaceEmployee handles PUT /api/v1/employees/:id.
-// PUT is a full replacement: the request body must represent the complete desired state of the resource 
+// PUT is a full replacement: the request body must represent the complete desired state of the resource
 func (h *EmployeeHandler) ReplaceEmployee(c *gin.Context) {
 	id, appErr := parseIDParam(c)
 	if appErr != nil {
@@ -124,7 +109,7 @@ func (h *EmployeeHandler) ReplaceEmployee(c *gin.Context) {
 }
 
 // PatchEmployee handles PATCH /api/v1/employees/:id.
-// PATCH is a partial update: only fields present in the request body are validated and changed. 
+// PATCH is a partial update: only fields present in the request body are validated and changed.
 func (h *EmployeeHandler) PatchEmployee(c *gin.Context) {
 	id, appErr := parseIDParam(c)
 	if appErr != nil {
@@ -179,7 +164,7 @@ func parseIDParam(c *gin.Context) (uint, *apperrors.AppError) {
 	return uint(id), nil
 }
 
-// parsePositiveIntQuery reads an integer query param 
+// parsePositiveIntQuery reads an integer query param
 func parsePositiveIntQuery(c *gin.Context, key string, fallback int) int {
 	raw := c.Query(key)
 	if raw == "" {
@@ -187,6 +172,20 @@ func parsePositiveIntQuery(c *gin.Context, key string, fallback int) int {
 	}
 	v, err := strconv.Atoi(raw)
 	if err != nil || v < 1 {
+		return fallback
+	}
+	return v
+}
+
+// parseNonNegativeIntQuery reads an integer query param, allowing zero
+// (used for "start", where 0 is a valid offset).
+func parseNonNegativeIntQuery(c *gin.Context, key string, fallback int) int {
+	raw := c.Query(key)
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v < 0 {
 		return fallback
 	}
 	return v
